@@ -19,6 +19,7 @@ import logging
 import json
 import telegram
 from telegram.error import NetworkError, Unauthorized
+from telegram.ext import MessageHandler, Filters, Updater
 from time import sleep
 
 import click
@@ -42,6 +43,8 @@ except SystemError:
 
 ASSISTANT_API_ENDPOINT = 'embeddedassistant.googleapis.com'
 DEFAULT_GRPC_DEADLINE = 60 * 3 + 5
+
+assistant = None
 
 class SampleTextAssistant(object):
     """Sample Assistant that supports text based conversations.
@@ -147,11 +150,11 @@ def main(api_endpoint, credentials,
     logging.basicConfig(level=logging.DEBUG if verbose else logging.INFO)
 
     global update_id
-
+	
     # Telegram
     """Run the bot."""
     # Telegram Bot Authorization Token
-    bot = telegram.Bot('TOKEN')
+    updater = Updater(token='TOKEN')
 
     # Load OAuth 2.0 credentials.
     try:
@@ -165,29 +168,27 @@ def main(api_endpoint, credentials,
         logging.error('Run google-oauthlib-tool to initialize '
                       'new OAuth 2.0 credentials.')
         return
+    dispatcher = updater.dispatcher
+    echo_handler = MessageHandler(Filters.text, echo)
+    dispatcher.add_handler(echo_handler)		
 
     # Create an authorized gRPC channel.
     grpc_channel = google.auth.transport.grpc.secure_authorized_channel(
         credentials, http_request, api_endpoint)
     logging.info('Connecting to %s', api_endpoint)
 
-    with SampleTextAssistant(lang, device_model_id, device_id,
-                             grpc_channel, grpc_deadline) as assistant:
+    assistant =  SampleTextAssistant(lang, device_model_id, device_id, grpc_channel, grpc_deadline)
 
     # get the first pending update_id, this is so we can skip over it in case
     # we get an "Unauthorized" exception.
-        try:
-            update_id = bot.get_updates()[0].update_id
-        except IndexError:
-            update_id = None
-
-    # weird stuff for telegram
-        for update in bot.get_updates(offset=update_id, timeout=10):
-            update_id = update.update_id + 1
-
-            if update.message:
-                display_text = assistant.assist(text_query=update.message.text)
-                update.message.reply_text(display_text)
+    #try:
+    #    update_id = updater.get_updates()[0].update_id
+    #except IndexError:
+    #    update_id = None
+				
+def echo(update):
+    display_text = assistant.assist(text_query=update.message.text)
+    update.message.reply_text(display_text)
 
 if __name__ == '__main__':
     main()
